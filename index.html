@@ -349,6 +349,52 @@
             overlay.classList.remove("hidden");
             gameContainer.classList.add("hidden");
         }
-    </script>
+    <script type="module">
+    import { FaceLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/face_landmarker@0.10.0";
+
+    // ... (Keep the questions array same as before) ...
+
+    startBtn.addEventListener("click", async () => {
+        try {
+            startBtn.disabled = true;
+            startBtn.innerText = "Loading AI...";
+
+            // 1. Setup Tracking
+            const filesetResolver = await FilesetResolver.forVisionTasks(
+                "https://cdn.jsdelivr.net/npm/@mediapipe/face_landmarker@0.10.0/wasm"
+            );
+            faceLandmarker = await FaceLandmarker.createFromOptions(filesetResolver, {
+                baseOptions: { 
+                    modelAssetPath: `https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task`, 
+                    delegate: "GPU" 
+                },
+                outputFaceBlendshapes: false,
+                runningMode: "VIDEO",
+                numFaces: 1
+            });
+
+            // 2. Request Camera
+            const stream = await navigator.mediaDevices.getUserMedia({ 
+                video: { width: 640, height: 480 } 
+            });
+            
+            video.srcObject = stream;
+            video.onloadedmetadata = () => {
+                video.play();
+                overlay.classList.add("hidden");
+                gameContainer.classList.remove("hidden");
+                startGame();
+            };
+
+        } catch (error) {
+            console.error(error);
+            alert("Error: " + error.message + "\n\nMake sure you are using a Local Server (like Live Server) and have allowed Camera access.");
+            startBtn.disabled = false;
+            startBtn.innerText = "Start Game";
+        }
+    });
+    
+    // ... (Keep rest of the game logic functions) ...
+</script>
 </body>
 </html>
