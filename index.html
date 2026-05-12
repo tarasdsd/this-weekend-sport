@@ -40,25 +40,38 @@
             <div id="opt-r" class="box">➡ <div class="txt">Option B</div></div>
         </div>
     </div>
+<script>
+    const questions = [
+        { q: "If it rains tomorrow...", l: "...we'll play indoors.", r: "...we'll go surfing.", a: "l" },
+        { q: "If the wind is strong...", l: "...we'll fly a kite.", r: "...we won't go sailing.", a: "r" },
+        { q: "If it's sunny Saturday...", l: "...I'll sleep all day.", r: "...we'll play football.", a: "r" },
+        { q: "If the lake freezes...", l: "...we'll go ice skating.", r: "...we'll swim.", a: "l" },
+        { q: "If it's too hot...", l: "...we'll run a race.", r: "...we'll use the gym.", a: "r" },
+        { q: "If I find my racket...", l: "...I'll play tennis.", r: "...I'll play soccer.", a: "l" },
+        { q: "If the snow is deep...", l: "...we'll go skiing.", r: "...we'll bike.", a: "l" },
+        { q: "If waves are calm...", l: "...surfing is bad.", r: "...we'll win surf-pro.", a: "l" },
+        { q: "If we win today...", l: "...we go to finals.", r: "...we quit sports.", a: "l" },
+        { q: "If it's foggy...", l: "...we start early.", r: "...we'll delay the race.", a: "r" }
+    ];
 
-    <script>
-        const questions = [
-            { q: "If it rains tomorrow...", l: "...we'll play indoors.", r: "...we'll go surfing.", a: "l" },
-            { q: "If the wind is strong...", l: "...we'll fly a kite.", r: "...we won't go sailing.", a: "r" },
-            { q: "If it's sunny Saturday...", l: "...I'll sleep all day.", r: "...we'll play football.", a: "r" },
-            { q: "If the lake freezes...", l: "...we'll go ice skating.", r: "...we'll swim.", a: "l" },
-            { q: "If it's too hot...", l: "...we'll run a race.", r: "...we'll use the gym.", a: "r" },
-            { q: "If I find my racket...", l: "...I'll play tennis.", r: "...I'll play soccer.", a: "l" },
-            { q: "If the snow is deep...", l: "...we'll go skiing.", r: "...we'll bike.", a: "l" },
-            { q: "If waves are calm...", l: "...surfing is bad.", r: "...we'll win surf-pro.", a: "l" },
-            { q: "If we win today...", l: "...we go to finals.", r: "...we quit sports.", a: "l" },
-            { q: "If it's foggy...", l: "...we start early.", r: "...we'll delay the race.", a: "r" }
-        ];
+    let model, video, currentQ = 0, score = 0, canReady = true, timer;
+    
+    // Audio fallbacks (using simple oscillators if files fail)
+    const playSound = (freq) => {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = ctx.createOscillator();
+        const g = ctx.createGain();
+        osc.type = freq > 300 ? 'sine' : 'square';
+        osc.frequency.setValueAtTime(freq, ctx.currentTime);
+        g.gain.setValueAtTime(0.1, ctx.currentTime);
+        g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.5);
+        osc.connect(g); g.connect(ctx.destination);
+        osc.start(); osc.stop(ctx.currentTime + 0.5);
+    };
 
-        let model, video, currentQ = 0, score = 0, canReady = true, timer;
-
-        async function init() {
-            document.getElementById('start-btn').innerText = "Loading AI...";
+    async function init() {
+        document.getElementById('start-btn').innerText = "Starting Camera...";
+        try {
             model = await blazeface.load();
             video = document.getElementById('webcam');
             const stream = await navigator.mediaDevices.getUserMedia({ video: true });
@@ -68,59 +81,82 @@
             document.getElementById('game-container').classList.remove('hidden');
             nextQuestion();
             detect();
+        } catch (e) {
+            alert("Camera error: " + e.message);
         }
+    }
 
-        async function detect() {
-            const predictions = await model.estimateFaces(video, false);
-            if (predictions.length > 0 && canReady) {
-                const landmarks = predictions[0].landmarks;
-                const nose = landmarks[2]; // Nose point
-                const rightEye = landmarks[0]; // Right Eye
-                const leftEye = landmarks[1]; // Left Eye
-                
-                // Tilt logic: Compare nose X position to midpoint of eyes
-                const eyeMid = (rightEye[0] + leftEye[0]) / 2;
-                const tilt = nose[0] - eyeMid;
+    async function detect() {
+        if (!video || !model) return;
+        const predictions = await model.estimateFaces(video, false);
+        
+        if (predictions.length > 0) {
+            const nose = predictions[0].landmarks[2]; 
+            const rightEye = predictions[0].landmarks[0]; 
+            const leftEye = predictions[0].landmarks[1]; 
+            
+            const eyeMid = (rightEye[0] + leftEye[0]) / 2;
+            const tilt = nose[0] - eyeMid;
 
-                if (tilt > 12) answer('r'); // Adjusted for mirrored view logic
-                else if (tilt < -12) answer('l');
+            // THRESHOLD SET TO 5 FOR HIGH SENSITIVITY
+            if (canReady) {
+                if (tilt > 5) answer('r'); 
+                else if (tilt < -5) answer('l');
             }
-            requestAnimationFrame(detect);
+        }
+        requestAnimationFrame(detect);
+    }
+
+    function answer(choice) {
+        if (!canReady) return;
+        canReady = false;
+        clearInterval(timer);
+
+        const correct = questions[currentQ].a;
+        const selectedBox = document.getElementById(choice === 'l' ? 'opt-l' : 'opt-r');
+        
+        if (selectedBox) selectedBox.classList.add('selected');
+        
+        if (choice === correct) {
+            score += 10;
+            playSound(600); // Ding
+        } else {
+            playSound(150); // Buzz
         }
 
-        function answer(choice) {
-            canReady = false;
-            clearInterval(timer);
-            const correct = questions[currentQ].a;
-            document.getElementById(choice === 'l' ? 'opt-l' : 'opt-r').classList.add('selected');
-            
-            if(choice === correct) score += 10;
-            document.getElementById('score-board').innerText = `Score: ${score} | Time: --`;
+        document.getElementById('score-board').innerText = `Score: ${score} | Time: --`;
 
-            setTimeout(() => {
-                currentQ++;
-                if(currentQ < questions.length) nextQuestion();
-                else alert("Game Finished! Score: " + score);
-            }, 1500);
-        }
+        setTimeout(() => {
+            currentQ++;
+            if (currentQ < questions.length) {
+                nextQuestion();
+            } else {
+                document.getElementById('q-text').innerText = "GAME FINISHED!";
+                alert("Final Score: " + score + "/100");
+            }
+        }, 1500);
+    }
 
-        function nextQuestion() {
-            canReady = true;
-            let time = 7;
-            document.getElementById('opt-l').classList.remove('selected');
-            document.getElementById('opt-r').classList.remove('selected');
-            document.getElementById('q-text').innerText = questions[currentQ].q;
-            document.getElementById('opt-l').querySelector('.txt').innerText = questions[currentQ].l;
-            document.getElementById('opt-r').querySelector('.txt').innerText = questions[currentQ].r;
-            
-            timer = setInterval(() => {
-                time--;
-                document.getElementById('score-board').innerText = `Score: ${score} | Time: ${time}s`;
-                if(time <= 0) { clearInterval(timer); answer('none'); }
-            }, 1000);
-        }
+    function nextQuestion() {
+        canReady = true;
+        let time = 7;
+        document.getElementById('opt-l').classList.remove('selected');
+        document.getElementById('opt-r').classList.remove('selected');
+        document.getElementById('q-text').innerText = questions[currentQ].q;
+        document.getElementById('opt-l').querySelector('.txt').innerText = questions[currentQ].l;
+        document.getElementById('opt-r').querySelector('.txt').innerText = questions[currentQ].r;
+        
+        timer = setInterval(() => {
+            time--;
+            document.getElementById('score-board').innerText = `Score: ${score} | Time: ${time}s`;
+            if (time <= 0) { 
+                clearInterval(timer); 
+                answer('none'); 
+            }
+        }, 1000);
+    }
 
-        document.getElementById('start-btn').onclick = init;
-    </script>
+    document.getElementById('start-btn').onclick = init;
+</script>
 </body>
 </html>
